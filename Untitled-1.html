@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Neon Ultra Dash</title>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --card-bg: #1C1C1E;
+            --accent-color: #3E82FC; 
+            --text-main: #FFFFFF;
+            --text-sub: #8E8E93;
+            --radius: 28px;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: env(safe-area-inset-top) 20px 20px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* One UI Header */
+        header {
+            width: 100%;
+            padding: 50px 0 30px 10px;
+            text-align: left;
+            max-width: 450px;
+        }
+
+        header h1 {
+            font-size: 38px;
+            font-weight: 600;
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            color: var(--text-sub);
+            font-size: 18px;
+            margin: 8px 0 0 0;
+        }
+
+        /* Main Gauge Card */
+        .status-card {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 450px;
+            border-radius: var(--radius);
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .ecu-label {
+            font-size: 14px;
+            color: var(--accent-color);
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .ecu-value {
+            font-size: 96px;
+            font-weight: 700;
+            margin: 5px 0;
+            line-height: 1;
+        }
+
+        .hex-data {
+            font-family: monospace;
+            font-size: 11px;
+            color: var(--text-sub);
+            margin-top: 20px;
+            background: rgba(255,255,255,0.05);
+            padding: 8px;
+            border-radius: 12px;
+            word-break: break-all;
+        }
+
+        /* Control Grid */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            width: 100%;
+            max-width: 450px;
+        }
+
+        .btn {
+            background: var(--card-bg);
+            border: none;
+            border-radius: var(--radius);
+            color: var(--text-main);
+            padding: 22px;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.1s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+            background: #2C2C2E;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+            grid-column: span 2;
+            padding: 24px;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        #console {
+            margin-top: auto;
+            padding: 20px;
+            font-size: 13px;
+            color: #555;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Neon Ultra</h1>
+        <p id="status-text">Ready to connect</p>
+    </header>
+
+    <div class="status-card">
+        <div class="ecu-label">ECU Output</div>
+        <div class="ecu-value" id="ecu-display">00</div>
+        <div class="hex-data" id="hex-display">WAITING FOR DATA...</div>
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" id="connect-btn">Connect Device</button>
+        
+        <button class="btn" onclick="sendCommand('+AT+LIGHT=1')">Lights On</button>
+        <button class="btn" onclick="sendCommand('+AT+LIGHT=0')">Lights Off</button>
+        <button class="btn" onclick="sendCommand('+AT+LOCK=1')">Lock</button>
+        <button class="btn" onclick="sendCommand('+AT+LOCK=0')">Unlock</button>
+    </div>
+
+    <div id="console">Compatible with Chrome (Android)</div>
+
+    <script>
+        let device, controlChar;
+        const S_UUID = 0x2C00; // Primary Service
+        const W_UUID = 0x2C01; // Write Characteristic
+        const N_UUID = 0x2C03; // Notify Characteristic
+
+        const updateStatus = (msg, color = "#8E8E93") => {
+            const el = document.getElementById('status-text');
+            el.innerText = msg;
+            el.style.color = color;
+            document.getElementById('console').innerText = msg;
+        };
+
+        async function initBLE() {
+            try {
+                updateStatus("Searching for OKAI...");
+                
+                // acceptAllDevices fixes the "No compatible devices" issue
+                device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [S_UUID]
+                });
+
+                updateStatus("Connecting to GATT...");
+                const server = await device.gatt.connect();
+                
+                updateStatus("Fetching Service...");
+                const service = await server.getPrimaryService(S_UUID);
+                
+                // Set up Notifications (Reading ECU/Throttle)
+                updateStatus("Starting
